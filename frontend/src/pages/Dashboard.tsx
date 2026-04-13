@@ -7,7 +7,10 @@ import ShapChart from '../components/ShapChart'
 import Commentary from '../components/Commentary'
 import RetrainButton from '../components/RetrainButton'
 import EnrichmentPanel from '../components/EnrichmentPanel'
+import SampleShapPreview from '../components/SampleShapPreview'
 import toast from 'react-hot-toast'
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const TICKERS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
 
@@ -38,21 +41,44 @@ export default function Dashboard() {
     setPrediction(null)
     setLoadTime(null)
     const start = Date.now()
-    try {
+    const RETRY_ID = 'predict-retry'
+
+    const load = async () => {
       const data = await fetchPrediction(t, h, ac.signal)
-      if (seq !== predictSeq.current) return
+      if (seq !== predictSeq.current) return null
+      return data
+    }
+
+    try {
+      let data: Prediction | null = null
+      try {
+        data = await load()
+      } catch (first) {
+        if (seq !== predictSeq.current) return
+        if (ac.signal.aborted) return
+        const e0 = first as { code?: string }
+        if (e0?.code === 'ERR_CANCELED') return
+        toast.loading('Backend may be waking up — retrying once in 5s…', { id: RETRY_ID, duration: 6000 })
+        await sleep(5000)
+        toast.dismiss(RETRY_ID)
+        if (seq !== predictSeq.current) return
+        if (ac.signal.aborted) return
+        data = await load()
+      }
+      if (!data || seq !== predictSeq.current) return
       setLoadTime(Date.now() - start)
       setPrediction(data)
       toast.dismiss()
     } catch (e: unknown) {
       if (seq !== predictSeq.current) return
       if (ac.signal.aborted) return
-      const err = e as { code?: string; message?: string }
+      const err = e as { code?: string }
       if (err?.code === 'ERR_CANCELED') return
+      toast.dismiss(RETRY_ID)
       console.error(e)
       toast.error(
-        'Prediction failed — Render free tier can take 60s on first request after sleep. Check VITE_API_URL in Vercel env matches your backend URL, then try again.',
-        { duration: 8000 },
+        'Could not reach the API. On Vercel: set VITE_API_URL to your Render URL (https://…onrender.com) and redeploy. First load after idle can take ~90s on Render free tier — try Predict again.',
+        { duration: 10000 },
       )
     } finally {
       if (seq === predictSeq.current) setLoading(false)
@@ -142,16 +168,32 @@ export default function Dashboard() {
               ✓ Completed in {(loadTime / 1000).toFixed(1)}s — live yfinance + LightGBM + SHAP
             </p>
           )}
-          {!prediction && !loading && (
-            <p style={{ fontSize: 11, color: '#374151', marginTop: 8 }}>
-              First request may take ~30s on Render free tier cold starts
-            </p>
-          )}
+          <p style={{ fontSize: 11, color: '#374151', marginTop: 10, maxWidth: 640, lineHeight: 1.6 }}>
+            <strong style={{ color: '#6b7280' }}>Live demo:</strong> this page calls your FastAPI backend on Render.
+            Free Render sleeps when idle — the <strong style={{ color: '#6b7280' }}>first Predict</strong> after a few minutes can take <strong style={{ color: '#6b7280' }}>30–90 seconds</strong> (we auto-retry once). If it always fails, check <code style={{ color: '#4b5563' }}>VITE_API_URL</code> in Vercel matches your Render URL.
+          </p>
         </div>
+
+        {/* ── HOW IT WORKS + SAMPLE CHART (always until a real prediction exists) ── */}
+        {!prediction && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 24, alignItems: 'start' }}>
+            <div style={{ background: '#080812', border: '1px solid #1f2937', borderRadius: 16, padding: '22px 24px' }}>
+              <p style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>HOW THIS DASHBOARD WORKS</p>
+              <ol style={{ margin: 0, paddingLeft: 18, color: '#9ca3af', fontSize: 13, lineHeight: 1.85 }}>
+                <li><strong style={{ color: '#e5e7eb' }}>Predict</strong> — loads live prices (yfinance), builds 17 features, runs LightGBM, runs SHAP.</li>
+                <li><strong style={{ color: '#e5e7eb' }}>Signal card</strong> — BUY / SELL / HOLD with calibrated probabilities.</li>
+                <li><strong style={{ color: '#e5e7eb' }}>SHAP chart</strong> — bar graph (like the example →) shows which features drove this prediction.</li>
+                <li><strong style={{ color: '#e5e7eb' }}>Stats row</strong> — RSI, AI regime, volatility, MACD, class probs at a glance.</li>
+                <li>Optional: GPT commentary + news/reddit/analyst cards if API keys are set on the backend.</li>
+              </ol>
+            </div>
+            <SampleShapPreview />
+          </div>
+        )}
 
         {/* ── LOADING STATE ── */}
         {loading && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '80px 24px', gap: 20 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px 32px', gap: 20 }}>
             <div style={{
               width: 48, height: 48, borderRadius: '50%',
               border: '4px solid #1f2937', borderTopColor: '#3b82f6',
@@ -159,8 +201,11 @@ export default function Dashboard() {
             }} />
             <div style={{ textAlign: 'center' }}>
               <p style={{ color: '#9ca3af', marginBottom: 8 }}>Running the full pipeline for <strong>{ticker}</strong> ({horizon}d)</p>
-              <div style={{ display: 'flex', gap: 24, justifyContent: 'center' }}>
-                {['Fetching yfinance', 'Computing 17 features', 'Running LightGBM', 'Computing SHAP'].map((s, i) => (
+              <p style={{ fontSize: 12, color: '#4b5563', marginBottom: 12, maxWidth: 420 }}>
+                Please wait — cold backends often need up to 90s. Do not click Predict again unless you want to cancel and restart.
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, justifyContent: 'center' }}>
+                {['yfinance', '17 features', 'LightGBM', 'SHAP'].map((s, i) => (
                   <span key={i} style={{ fontSize: 11, color: '#374151' }}>{s}</span>
                 ))}
               </div>
@@ -228,12 +273,11 @@ export default function Dashboard() {
 
         {/* ── EMPTY STATE ── */}
         {!prediction && !loading && (
-          <div style={{ textAlign: 'center', padding: '80px 24px' }}>
-            <p style={{ fontSize: 48, marginBottom: 16 }}>📊</p>
-            <p style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Ready to predict</p>
-            <p style={{ color: '#4b5563', fontSize: 14, maxWidth: 400, margin: '0 auto' }}>
-              Select a ticker above and click Predict. The system will fetch live market data,
-              compute all 17 features, run LightGBM, and compute SHAP values — all in real time.
+          <div style={{ textAlign: 'center', padding: '40px 24px 60px' }}>
+            <p style={{ fontSize: 36, marginBottom: 12 }}>▶</p>
+            <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Click Predict above</p>
+            <p style={{ color: '#4b5563', fontSize: 14, maxWidth: 460, margin: '0 auto', lineHeight: 1.65 }}>
+              The example SHAP chart and checklist above stay visible until a live run succeeds — then they are replaced by your real signal, probability bars, and SHAP for that ticker.
             </p>
           </div>
         )}
