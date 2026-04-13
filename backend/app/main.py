@@ -13,8 +13,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://your-vercel-app.vercel.app",  # update after deploy
+        "http://localhost:3000",
+        "https://*.vercel.app",          # all Vercel preview + production URLs
+        "https://market-regime-detection.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
