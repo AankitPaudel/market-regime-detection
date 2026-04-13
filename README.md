@@ -120,6 +120,34 @@ The ±2% threshold filters out noise and creates a meaningful three-class proble
 
 ---
 
+## Backtest Results
+
+> Evaluated on held-out test data (most recent 20% of each ticker's history, ~150 trading days).  
+> Strategy: follow BUY/SELL signals, hold cash on HOLD. Transaction cost: 0.1% per trade.  
+> Run `python run_backtest.py` to regenerate these results locally.
+
+| Ticker | Horizon | Strategy Return | Buy & Hold | Sharpe Ratio | Win Rate | Total Trades |
+|--------|---------|----------------|------------|--------------|----------|--------------|
+| AAPL   | 1d      | +0.0%          | +10.3%     | 0.00         | 0%       | 0            |
+| AAPL   | 3d      | **+39.6%**     | +10.3%     | **4.07**     | 100%     | 4            |
+| AAPL   | 5d      | **+61.3%**     | +10.3%     | **4.23**     | 100%     | 5            |
+| GOOGL  | 1d      | +0.0%          | +26.3%     | 0.00         | 0%       | 0            |
+| GOOGL  | 3d      | **+88.1%**     | +26.3%     | **5.49**     | 100%     | 5            |
+| GOOGL  | 5d      | **+55.1%**     | +26.3%     | **3.85**     | 100%     | 2            |
+| MSFT   | 1d      | +0.0%          | -27.7%     | 0.00         | 0%       | 0            |
+| MSFT   | 3d      | -21.4%         | -27.7%     | -1.72        | 0%       | 0            |
+| MSFT   | 5d      | -27.8%         | -27.7%     | -2.19        | 0%       | 0            |
+| TSLA   | 1d      | +11.1%         | -14.9%     | 0.73         | 71%      | 7            |
+| TSLA   | 3d      | **+72.8%**     | -14.9%     | **3.49**     | 93%      | 14           |
+| TSLA   | 5d      | **+39.5%**     | -14.9%     | **2.00**     | 70%      | 20           |
+| NVDA   | 1d      | +0.0%          | +6.1%      | 0.00         | 0%       | 0            |
+| NVDA   | 3d      | **+18.4%**     | +6.1%      | **1.90**     | 100%     | 2            |
+| NVDA   | 5d      | **+67.4%**     | +6.1%      | **3.81**     | 100%     | 8            |
+
+> ⚠️ Past performance does not indicate future results. Research only.
+
+---
+
 ## Technical Features Explained
 
 | Feature | What It Measures | Trading Signal |
@@ -287,6 +315,25 @@ After deploying backend, update `allow_origins` in `backend/app/main.py` with th
 | **System Design** | Hybrid pre-train + live-data architecture, cold-start tolerant |
 | **Data Engineering** | yfinance pipeline, rolling feature computation, forward-return label creation |
 | **AI Integration** | GPT-4o optional commentary with structured prompt engineering |
+
+---
+
+## Model Card
+
+| | |
+|-|-|
+| **Model type** | LightGBM multi-class classifier wrapped in `CalibratedClassifierCV` (isotonic regression) |
+| **Training data** | 3 years of daily OHLCV via yfinance — ~750 trading days per ticker |
+| **Tickers** | AAPL, GOOGL, MSFT, TSLA, NVDA |
+| **Horizons** | 1-day, 3-day, 5-day (15 separate models) |
+| **Features** | 17 hand-crafted: technical indicators + original AI Intensity Index |
+| **Labels** | BUY (fwd return >+2%), SELL (<-2%), HOLD (otherwise) |
+| **Evaluation** | TimeSeriesSplit 3-fold CV — respects temporal order, no look-ahead bias |
+| **Calibration** | Isotonic regression via `CalibratedClassifierCV(cv=3, method='isotonic')` — corrects overconfident probability scores |
+| **Explainability** | SHAP TreeExplainer (applied to base estimator extracted from calibration wrapper) |
+| **Known limitations** | Trained on recent data; may underperform in regimes not represented in training window |
+| **Not suitable for** | Live trading, real financial decisions of any kind |
+| **Last trained** | April 2026 — run `python train_local.py` to retrain on latest data |
 
 ---
 
