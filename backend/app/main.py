@@ -14,10 +14,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://*.vercel.app",          # all Vercel preview + production URLs
-        "https://market-regime-detection.vercel.app",
     ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    # Any *.vercel.app deployment (preview or production URL)
+    allow_origin_regex=r"https://[a-zA-Z0-9\-]+\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

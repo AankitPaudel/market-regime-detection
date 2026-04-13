@@ -1,7 +1,8 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/$/, ''),
+  timeout: 120_000,
 })
 
 export interface Prediction {
@@ -41,8 +42,15 @@ export interface Prediction {
   }
 }
 
-export const fetchPrediction = async (ticker: string, horizon: number): Promise<Prediction> => {
-  const res = await api.get(`/api/predict/${ticker}`, { params: { horizon } })
+export const fetchPrediction = async (
+  ticker: string,
+  horizon: number,
+  signal?: AbortSignal,
+): Promise<Prediction> => {
+  const res = await api.get(`/api/predict/${ticker}`, {
+    params: { horizon },
+    signal,
+  })
   return res.data
 }
 

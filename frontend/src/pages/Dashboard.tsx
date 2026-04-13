@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { fetchPrediction } from '../lib/api'
 import type { Prediction } from '../lib/api'
 import HorizonToggle from '../components/HorizonToggle'
@@ -25,20 +25,36 @@ export default function Dashboard() {
   const [prediction, setPrediction] = useState<Prediction | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadTime, setLoadTime] = useState<number | null>(null)
+  const predictSeq = useRef(0)
+  const abortRef = useRef<AbortController | null>(null)
 
   const handlePredict = async (t = ticker, h = horizon) => {
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+    const seq = ++predictSeq.current
+
     setLoading(true)
     setPrediction(null)
     setLoadTime(null)
     const start = Date.now()
     try {
-      const data = await fetchPrediction(t, h)
+      const data = await fetchPrediction(t, h, ac.signal)
+      if (seq !== predictSeq.current) return
       setLoadTime(Date.now() - start)
       setPrediction(data)
-    } catch {
-      toast.error('Prediction failed — backend may be warming up. Try again in 30s.')
+    } catch (e: unknown) {
+      if (seq !== predictSeq.current) return
+      if (ac.signal.aborted) return
+      const err = e as { code?: string; message?: string }
+      if (err?.code === 'ERR_CANCELED') return
+      console.error(e)
+      toast.error(
+        'Prediction failed — Render free tier can take 60s on first request after sleep. Check VITE_API_URL in Vercel env matches your backend URL, then try again.',
+        { duration: 8000 },
+      )
     } finally {
-      setLoading(false)
+      if (seq === predictSeq.current) setLoading(false)
     }
   }
 
