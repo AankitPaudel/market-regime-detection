@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
-import { fetchPrediction } from '../lib/api'
-import type { Prediction } from '../lib/api'
+import { useState, useRef, useEffect } from 'react'
+import { fetchPrediction, fetchDashboardPreview } from '../lib/api'
+import type { Prediction, DashboardPreview } from '../lib/api'
 import HorizonToggle from '../components/HorizonToggle'
 import PredictionCard from '../components/PredictionCard'
 import ShapChart from '../components/ShapChart'
@@ -30,6 +30,33 @@ export default function Dashboard() {
   const [loadTime, setLoadTime] = useState<number | null>(null)
   const predictSeq = useRef(0)
   const abortRef = useRef<AbortController | null>(null)
+
+  const [preview, setPreview] = useState<DashboardPreview | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(true)
+  const [previewErr, setPreviewErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    const ac = new AbortController()
+    setPreviewLoading(true)
+    setPreviewErr(null)
+    setPreview(null)
+    fetchDashboardPreview(ticker, horizon, ac.signal)
+      .then((data) => {
+        if (!ac.signal.aborted) setPreview(data)
+      })
+      .catch((e: unknown) => {
+        if (ac.signal.aborted) return
+        const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Request failed'
+        setPreviewErr(msg)
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setPreviewLoading(false)
+      })
+    return () => ac.abort()
+  }, [ticker, horizon])
+
+  const displayPrediction = prediction ?? (!loading ? preview?.ml_preview ?? null : null)
+  const isPreview = !prediction && !!preview?.ml_preview && !!displayPrediction
 
   const handlePredict = async (t = ticker, h = horizon) => {
     abortRef.current?.abort()
@@ -87,7 +114,6 @@ export default function Dashboard() {
 
   const handleTickerChange = (t: string) => {
     setTicker(t)
-    handlePredict(t, horizon)
   }
 
   const handleHorizonChange = (h: number) => {
@@ -95,9 +121,15 @@ export default function Dashboard() {
     if (prediction) handlePredict(ticker, h)
   }
 
-  const labelColor = prediction?.prediction.label === 'BUY'
-    ? '#22c55e' : prediction?.prediction.label === 'SELL'
+  const labelColor = displayPrediction?.prediction.label === 'BUY'
+    ? '#22c55e' : displayPrediction?.prediction.label === 'SELL'
     ? '#ef4444' : '#eab308'
+
+  const marketState = {
+    data: preview && !previewErr ? preview : null,
+    loading: previewLoading,
+    error: previewErr,
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#05050f', color: '#e5e7eb' }}>
@@ -177,26 +209,28 @@ export default function Dashboard() {
               ✓ Completed in {(loadTime / 1000).toFixed(1)}s — live yfinance + LightGBM + SHAP
             </p>
           )}
-          <p style={{ fontSize: 11, color: '#374151', marginTop: 10, maxWidth: 640, lineHeight: 1.6 }}>
-            <strong style={{ color: '#6b7280' }}>Live demo:</strong> this page calls your FastAPI backend on Render.
-            Free Render sleeps when idle — the <strong style={{ color: '#6b7280' }}>first Predict</strong> after a few minutes can take <strong style={{ color: '#6b7280' }}>30–90 seconds</strong> (we auto-retry once). If it always fails, check <code style={{ color: '#4b5563' }}>VITE_API_URL</code> in Vercel matches your Render URL.
+          <p style={{ fontSize: 11, color: '#374151', marginTop: 10, maxWidth: 720, lineHeight: 1.6 }}>
+            <strong style={{ color: '#6b7280' }}>Recruiter preview:</strong> the chart and model cards below load from one <code style={{ color: '#4b5563' }}>/api/dashboard-preview</code> call (~4y Yahoo history + the same feature pipeline and LightGBM + SHAP on the latest bar).{' '}
+            <strong style={{ color: '#6b7280' }}>Predict</strong> runs a fresh live pull and optional enrichments. Free Render can sleep — first Predict after idle may take <strong style={{ color: '#6b7280' }}>30–90s</strong> (we auto-retry once).
           </p>
         </div>
 
-        {/* ── HOW IT WORKS + SAMPLE CHART (always until a real prediction exists) ── */}
-        {!prediction && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 24, alignItems: 'start' }}>
-            <div style={{ background: '#080812', border: '1px solid #1f2937', borderRadius: 16, padding: '22px 24px' }}>
-              <p style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>HOW THIS DASHBOARD WORKS</p>
-              <ol style={{ margin: 0, paddingLeft: 18, color: '#9ca3af', fontSize: 13, lineHeight: 1.85 }}>
-                <li><strong style={{ color: '#e5e7eb' }}>Predict</strong> — loads live prices (yfinance), builds 17 features, runs LightGBM, runs SHAP.</li>
-                <li><strong style={{ color: '#e5e7eb' }}>Signal card</strong> — BUY / SELL / HOLD with calibrated probabilities.</li>
-                <li><strong style={{ color: '#e5e7eb' }}>SHAP chart</strong> — horizontal bars show which features drove this prediction (after Predict succeeds).</li>
-                <li><strong style={{ color: '#e5e7eb' }}>Stats row</strong> — RSI, AI regime, volatility, MACD, class probs at a glance.</li>
-                <li>Optional: GPT commentary + news/reddit/analyst cards if API keys are set on the backend.</li>
-              </ol>
-            </div>
-            <MarketHistoryPanel ticker={ticker} />
+        {/* ── 4Y MARKET + always visible when API works ── */}
+        <div style={{ marginBottom: 24 }}>
+          <MarketHistoryPanel ticker={ticker} market={marketState} />
+        </div>
+
+        {preview?.ml_preview_error && !prediction && (
+          <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: '#fcd34d', fontWeight: 700, marginBottom: 6 }}>Model preview unavailable</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6 }}>{preview.ml_preview_error}</p>
+          </div>
+        )}
+
+        {preview?.ml_preview?.preview_note && isPreview && (
+          <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>Dashboard preview (not a second data pull)</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.65 }}>{preview.ml_preview.preview_note}</p>
           </div>
         )}
 
@@ -222,46 +256,44 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* ── RESULTS ── */}
-        {prediction && !loading && (
+        {/* ── RESULTS (live predict or 4y-based preview) ── */}
+        {displayPrediction && !loading && (
           <>
-            {/* Signal banner */}
             <div style={{ background: `${labelColor}10`, border: `1px solid ${labelColor}30`, borderRadius: 16, padding: '16px 24px', marginBottom: 20, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                 <span style={{ fontSize: 32, fontWeight: 900, color: labelColor, fontFamily: 'monospace' }}>
-                  {prediction.prediction.label}
+                  {displayPrediction.prediction.label}
                 </span>
                 <div>
                   <p style={{ fontWeight: 700, fontSize: 16 }}>
-                    {TICKER_NAMES[prediction.ticker]} · {prediction.horizon}-day signal
+                    {TICKER_NAMES[displayPrediction.ticker]} · {displayPrediction.horizon}-day signal
+                    {isPreview && <span style={{ marginLeft: 8, fontSize: 11, color: '#60a5fa', fontWeight: 600 }}>(preview)</span>}
                   </p>
                   <p style={{ fontSize: 13, color: '#6b7280' }}>
-                    {(prediction.prediction.confidence * 100).toFixed(1)}% model confidence ·{' '}
-                    {prediction.features.ai_regime === 1 ? '⚡ High AI regime' : '— Low AI regime'}
+                    {(displayPrediction.prediction.confidence * 100).toFixed(1)}% model confidence ·{' '}
+                    {displayPrediction.features.ai_regime === 1 ? '⚡ High AI regime' : '— Low AI regime'}
                   </p>
                 </div>
               </div>
               <div style={{ fontSize: 12, color: '#4b5563', textAlign: 'right' }}>
-                <p>Model: LightGBM (lgbm_{prediction.ticker}_{prediction.horizon}d)</p>
+                <p>Model: LightGBM (lgbm_{displayPrediction.ticker}_{displayPrediction.horizon}d)</p>
                 <p>Features: 17 technical indicators</p>
               </div>
             </div>
 
-            {/* Main grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-              <PredictionCard prediction={prediction} />
-              <ShapChart shapValues={prediction.shap_values} />
+              <PredictionCard prediction={displayPrediction} />
+              <ShapChart shapValues={displayPrediction.shap_values} />
             </div>
 
-            {/* Feature stats row */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: prediction.has_commentary ? 16 : 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: displayPrediction.has_commentary ? 16 : 0 }}>
               {[
-                { label: 'RSI (14)', value: prediction.features.rsi.toString(), desc: prediction.features.rsi < 30 ? 'Oversold zone' : prediction.features.rsi > 70 ? 'Overbought zone' : 'Neutral range', color: prediction.features.rsi < 30 ? '#22c55e' : prediction.features.rsi > 70 ? '#ef4444' : '#9ca3af' },
-                { label: 'AI Intensity', value: `${(prediction.features.ai_index * 100).toFixed(1)}%`, desc: prediction.features.ai_regime === 1 ? '⚡ High algo regime' : '— Low algo regime', color: prediction.features.ai_regime === 1 ? '#8b5cf6' : '#4b5563' },
-                { label: '10d Volatility', value: `${(prediction.features.volatility_10d * 100).toFixed(2)}%`, desc: prediction.features.volatility_10d > 0.02 ? 'Elevated volatility' : 'Calm market', color: prediction.features.volatility_10d > 0.02 ? '#f59e0b' : '#9ca3af' },
-                { label: 'MACD Diff', value: prediction.features.macd_diff.toFixed(4), desc: prediction.features.macd_diff > 0 ? 'Positive momentum' : 'Negative momentum', color: prediction.features.macd_diff > 0 ? '#22c55e' : '#ef4444' },
-                { label: 'BUY prob', value: `${(prediction.prediction.probabilities.BUY * 100).toFixed(1)}%`, desc: 'LightGBM BUY class', color: '#22c55e' },
-                { label: 'SELL prob', value: `${(prediction.prediction.probabilities.SELL * 100).toFixed(1)}%`, desc: 'LightGBM SELL class', color: '#ef4444' },
+                { label: 'RSI (14)', value: displayPrediction.features.rsi.toString(), desc: displayPrediction.features.rsi < 30 ? 'Oversold zone' : displayPrediction.features.rsi > 70 ? 'Overbought zone' : 'Neutral range', color: displayPrediction.features.rsi < 30 ? '#22c55e' : displayPrediction.features.rsi > 70 ? '#ef4444' : '#9ca3af' },
+                { label: 'AI Intensity', value: `${(displayPrediction.features.ai_index * 100).toFixed(1)}%`, desc: displayPrediction.features.ai_regime === 1 ? '⚡ High algo regime' : '— Low algo regime', color: displayPrediction.features.ai_regime === 1 ? '#8b5cf6' : '#4b5563' },
+                { label: '10d Volatility', value: `${(displayPrediction.features.volatility_10d * 100).toFixed(2)}%`, desc: displayPrediction.features.volatility_10d > 0.02 ? 'Elevated volatility' : 'Calm market', color: displayPrediction.features.volatility_10d > 0.02 ? '#f59e0b' : '#9ca3af' },
+                { label: 'MACD Diff', value: displayPrediction.features.macd_diff.toFixed(4), desc: displayPrediction.features.macd_diff > 0 ? 'Positive momentum' : 'Negative momentum', color: displayPrediction.features.macd_diff > 0 ? '#22c55e' : '#ef4444' },
+                { label: 'BUY prob', value: `${(displayPrediction.prediction.probabilities.BUY * 100).toFixed(1)}%`, desc: 'LightGBM BUY class', color: '#22c55e' },
+                { label: 'SELL prob', value: `${(displayPrediction.prediction.probabilities.SELL * 100).toFixed(1)}%`, desc: 'LightGBM SELL class', color: '#ef4444' },
               ].map(({ label, value, desc, color }) => (
                 <div key={label} style={{ background: '#0d0d1a', border: '1px solid #1f2937', borderRadius: 12, padding: '14px 16px' }}>
                   <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 4, fontWeight: 600 }}>{label}</p>
@@ -271,22 +303,33 @@ export default function Dashboard() {
               ))}
             </div>
 
-            {prediction.has_commentary && (
-              <Commentary text={prediction.commentary} />
+            {displayPrediction.has_commentary && (
+              <Commentary text={displayPrediction.commentary} />
             )}
 
-            {/* Optional enrichment panels — only visible when API keys are set */}
-            <EnrichmentPanel enrichments={prediction.enrichments} />
+            <EnrichmentPanel enrichments={displayPrediction.enrichments} />
           </>
         )}
 
-        {/* ── EMPTY STATE ── */}
-        {!prediction && !loading && (
+        {!displayPrediction && !loading && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20, marginBottom: 24, alignItems: 'start' }}>
+            <div style={{ background: '#080812', border: '1px solid #1f2937', borderRadius: 16, padding: '22px 24px' }}>
+              <p style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>HOW THIS DASHBOARD WORKS</p>
+              <ol style={{ margin: 0, paddingLeft: 18, color: '#9ca3af', fontSize: 13, lineHeight: 1.85 }}>
+                <li><strong style={{ color: '#e5e7eb' }}>Preview</strong> — ~4y chart + model cards load automatically from the backend (same features as Predict when models are deployed).</li>
+                <li><strong style={{ color: '#e5e7eb' }}>Predict</strong> — fresh yfinance pull, optional news / Reddit / analyst cards if keys are set.</li>
+                <li><strong style={{ color: '#e5e7eb' }}>Signal + SHAP</strong> — BUY / SELL / HOLD, probabilities, and feature attribution.</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {!displayPrediction && !loading && (
           <div style={{ textAlign: 'center', padding: '40px 24px 60px' }}>
             <p style={{ fontSize: 36, marginBottom: 12 }}>▶</p>
-            <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Click Predict above</p>
-            <p style={{ color: '#4b5563', fontSize: 14, maxWidth: 460, margin: '0 auto', lineHeight: 1.65 }}>
-              The 4-year price panel and checklist stay visible until Predict succeeds — then you see the full ML output (signal, probabilities, SHAP) for that ticker.
+            <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Click Predict for a full live run</p>
+            <p style={{ color: '#4b5563', fontSize: 14, maxWidth: 520, margin: '0 auto', lineHeight: 1.65 }}>
+              If the model preview could not load (missing <code style={{ color: '#4b5563' }}>.pkl</code> on the server), deploy trained models to Render. The 4y price chart still shows when Yahoo data is reachable.
             </p>
           </div>
         )}

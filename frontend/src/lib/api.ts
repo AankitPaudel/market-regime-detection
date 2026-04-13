@@ -61,6 +61,26 @@ export const fetchMarketSnapshot = async (ticker: string, signal?: AbortSignal):
   return res.data
 }
 
+/** One request: 4y market summary + optional ML preview (same shape as Prediction). */
+export interface DashboardPreview extends MarketSnapshot {
+  horizon_requested: number
+  ml_preview: (Prediction & { preview_mode?: boolean; preview_note?: string }) | null
+  ml_preview_error: string | null
+}
+
+export const fetchDashboardPreview = async (
+  ticker: string,
+  horizon: number,
+  signal?: AbortSignal,
+): Promise<DashboardPreview> => {
+  const res = await api.get(`/api/dashboard-preview/${ticker}`, {
+    params: { horizon },
+    signal,
+    timeout: 90_000,
+  })
+  return res.data
+}
+
 export const fetchPrediction = async (
   ticker: string,
   horizon: number,
