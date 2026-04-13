@@ -43,6 +43,7 @@ export default function Dashboard() {
       if (seq !== predictSeq.current) return
       setLoadTime(Date.now() - start)
       setPrediction(data)
+      toast.dismiss()
     } catch (e: unknown) {
       if (seq !== predictSeq.current) return
       if (ac.signal.aborted) return
