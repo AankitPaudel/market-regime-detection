@@ -6,6 +6,7 @@ import PredictionCard from '../components/PredictionCard'
 import ShapChart from '../components/ShapChart'
 import Commentary from '../components/Commentary'
 import RetrainButton from '../components/RetrainButton'
+import EnrichmentPanel from '../components/EnrichmentPanel'
 import toast from 'react-hot-toast'
 
 const TICKERS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
@@ -201,6 +202,9 @@ export default function Dashboard() {
             {prediction.has_commentary && (
               <Commentary text={prediction.commentary} />
             )}
+
+            {/* Optional enrichment panels — only visible when API keys are set */}
+            <EnrichmentPanel enrichments={prediction.enrichments} />
           </>
         )}
 
