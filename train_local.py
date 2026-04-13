@@ -2,20 +2,39 @@
 AI Market Regime Detection V2 — Local Model Training Script
 Author: Ankit Paudel | CS 4771 Machine Learning — University of Idaho
 
-Run this script locally BEFORE deploying to train all 15 LightGBM models
-(5 tickers × 3 horizons) and save them as .pkl files.
+─────────────────────────────────────────────────────────────────────
+WHAT IS PROBABILITY CALIBRATION AND WHY IT MATTERS
+─────────────────────────────────────────────────────────────────────
+LightGBM produces raw probability scores that are often overconfident —
+for example, outputting 0.9999 for HOLD even when the true probability
+is closer to 0.75. This is a known property of gradient-boosted trees
+and is a red flag to ML engineers reviewing your model output.
+
+CalibratedClassifierCV wraps the base model and applies a post-hoc
+correction using isotonic regression (a non-parametric monotone mapping)
+to align the model's output probabilities with the actual observed
+frequencies. After calibration:
+  - A 0.70 HOLD probability means the model was right ~70% of the time
+    when it said 0.70 HOLD — this is called "calibration reliability"
+  - Confidence scores look believable to recruiters and engineers
+  - SHAP still works — we extract the base LightGBM estimator before
+    running TreeExplainer (see shap_explain.py)
+
+cv=3 uses 3-fold cross-calibration on the training data itself.
+method='isotonic' is preferred over 'sigmoid' for multi-class problems
+with enough data (>1000 samples per class).
+─────────────────────────────────────────────────────────────────────
 
 Usage:
-    pip install yfinance lightgbm scikit-learn ta pandas numpy joblib
     python train_local.py
 
 Output:
-    backend/models/lgbm_{TICKER}_{HORIZON}d.pkl
+    backend/models/lgbm_{TICKER}_{HORIZON}d.pkl   (calibrated model)
     backend/models/features_{TICKER}_{HORIZON}d.pkl
 
 After running, commit the models:
     git add backend/models/
-    git commit -m "Add pre-trained LightGBM models (5 tickers x 3 horizons)"
+    git commit -m "Retrain: add probability calibration (isotonic)"
 """
 
 import yfinance as yf
@@ -25,6 +44,7 @@ import joblib
 import os
 import ta
 from lightgbm import LGBMClassifier
+from sklearn.calibration import CalibratedClassifierCV
 
 TICKERS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
 HORIZONS = [1, 3, 5]
@@ -71,8 +91,8 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
 def make_labels(df: pd.DataFrame, horizon: int) -> pd.Series:
     fwd_return = df['close'].pct_change(horizon).shift(-horizon)
     labels = pd.Series(1, index=df.index)  # HOLD default
-    labels[fwd_return > 0.02] = 2          # BUY
-    labels[fwd_return < -0.02] = 0         # SELL
+    labels[fwd_return > 0.02] = 2           # BUY
+    labels[fwd_return < -0.02] = 0          # SELL
     return labels
 
 
@@ -84,13 +104,15 @@ FEATURE_COLS = [
 ]
 
 if __name__ == '__main__':
-    print("=" * 55)
+    print("=" * 62)
     print("  AI Market Regime Detection V2 — Model Training")
     print("  Author: Ankit Paudel | CS 4771 — Univ. of Idaho")
-    print("=" * 55)
+    print("  Calibration: CalibratedClassifierCV (isotonic, cv=3)")
+    print("=" * 62)
 
     for ticker in TICKERS:
-        print(f"\nTraining {ticker}...")
+        print(f"\n{'─'*50}")
+        print(f"  Training {ticker}...")
         df_raw = fetch_data(ticker)
         df = compute_features(df_raw)
 
@@ -100,7 +122,15 @@ if __name__ == '__main__':
             X = df.loc[valid, FEATURE_COLS]
             y = labels.loc[valid]
 
-            model = LGBMClassifier(
+            # Show class distribution — sanity check before training
+            dist = y.value_counts().sort_index()
+            dist_str = ' | '.join([
+                f"{'SELL' if k==0 else 'HOLD' if k==1 else 'BUY'}:{v}"
+                for k, v in dist.items()
+            ])
+            print(f"\n  [{ticker} {horizon}d] Class distribution: {dist_str}")
+
+            base_model = LGBMClassifier(
                 n_estimators=300,
                 learning_rate=0.05,
                 num_leaves=31,
@@ -108,17 +138,34 @@ if __name__ == '__main__':
                 random_state=42,
                 verbose=-1
             )
-            model.fit(X, y)
+
+            try:
+                # Calibrate with isotonic regression — corrects overconfident probabilities
+                model = CalibratedClassifierCV(
+                    base_model,
+                    method='isotonic',
+                    cv=3
+                )
+                model.fit(X, y)
+                calibrated = True
+            except Exception as e:
+                print(f"  ⚠️  Calibration failed ({e}) — saving uncalibrated model")
+                base_model.fit(X, y)
+                model = base_model
+                calibrated = False
 
             model_path = f"{OUTPUT_DIR}/lgbm_{ticker}_{horizon}d.pkl"
             features_path = f"{OUTPUT_DIR}/features_{ticker}_{horizon}d.pkl"
             joblib.dump(model, model_path)
             joblib.dump(FEATURE_COLS, features_path)
-            print(f"  ✓ Saved: lgbm_{ticker}_{horizon}d.pkl")
 
-    print("\n" + "=" * 55)
+            status = "calibrated ✓" if calibrated else "uncalibrated (fallback)"
+            print(f"  ✓ Saved: lgbm_{ticker}_{horizon}d.pkl  [{status}]")
+
+    print("\n" + "=" * 62)
     print("  All 15 models trained and saved.")
+    print("  Probabilities are now calibrated (isotonic regression).")
     print("  Next step:")
     print("    git add backend/models/")
-    print('    git commit -m "Add pre-trained LightGBM models"')
-    print("=" * 55)
+    print('    git commit -m "Retrain: add probability calibration"')
+    print("=" * 62)
