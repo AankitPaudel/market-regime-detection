@@ -33,7 +33,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def fetch_data(ticker: str, period: str = '3y') -> pd.DataFrame:
-    df = yf.download(ticker, period=period, progress=False)
+    df = yf.download(ticker, period=period, progress=False, auto_adjust=True)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]
     return df.dropna()
 

@@ -11,8 +11,11 @@ def fetch_live_data(ticker: str, days: int = 120) -> pd.DataFrame:
         ticker,
         start=start.strftime('%Y-%m-%d'),
         end=end.strftime('%Y-%m-%d'),
-        progress=False
+        progress=False,
+        auto_adjust=True
     )
     df = df.dropna()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
     df.columns = [c.lower() for c in df.columns]
     return df
