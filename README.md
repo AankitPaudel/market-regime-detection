@@ -146,6 +146,8 @@ The ±2% threshold filters out noise and creates a meaningful three-class proble
 
 > ⚠️ Past performance does not indicate future results. Research only.
 
+![Backtest Equity Curve](results/backtest_equity_curve.png)
+
 ---
 
 ## Technical Features Explained
