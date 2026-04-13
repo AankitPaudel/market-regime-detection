@@ -42,6 +42,25 @@ export interface Prediction {
   }
 }
 
+export interface MarketSnapshot {
+  ticker: string
+  source: string
+  period_requested: string
+  history_start: string
+  history_end: string
+  trading_days: number
+  last_close: number
+  first_close: number
+  total_return_pct: number
+  annualized_volatility_pct: number
+  closes: { d: string; c: number }[]
+}
+
+export const fetchMarketSnapshot = async (ticker: string, signal?: AbortSignal): Promise<MarketSnapshot> => {
+  const res = await api.get(`/api/snapshot/${ticker}`, { signal, timeout: 60_000 })
+  return res.data
+}
+
 export const fetchPrediction = async (
   ticker: string,
   horizon: number,

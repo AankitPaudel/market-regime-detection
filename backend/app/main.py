@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import predict as predict_router
 from app.routers import retrain as retrain_router
+from app.routers import snapshot as snapshot_router
 from app.pipeline.predict import load_models
 from dotenv import load_dotenv
 
@@ -30,6 +31,7 @@ def startup():
 
 app.include_router(predict_router.router, prefix="/api", tags=["Predictions"])
 app.include_router(retrain_router.router, prefix="/api", tags=["Retrain"])
+app.include_router(snapshot_router.router, prefix="/api", tags=["Market data"])
 
 
 @app.get("/")

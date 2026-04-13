@@ -7,7 +7,7 @@ import ShapChart from '../components/ShapChart'
 import Commentary from '../components/Commentary'
 import RetrainButton from '../components/RetrainButton'
 import EnrichmentPanel from '../components/EnrichmentPanel'
-import SampleShapPreview from '../components/SampleShapPreview'
+import MarketHistoryPanel from '../components/MarketHistoryPanel'
 import toast from 'react-hot-toast'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -77,8 +77,8 @@ export default function Dashboard() {
       toast.dismiss(RETRY_ID)
       console.error(e)
       toast.error(
-        'Could not reach the API. On Vercel: set VITE_API_URL to your Render URL (https://…onrender.com) and redeploy. First load after idle can take ~90s on Render free tier — try Predict again.',
-        { duration: 10000 },
+        'Predict failed. If the backend was asleep, wait and try again. If it always fails: set VITE_API_URL in Vercel to your Render https URL and redeploy.',
+        { duration: 9000 },
       )
     } finally {
       if (seq === predictSeq.current) setLoading(false)
@@ -122,6 +122,15 @@ export default function Dashboard() {
       </div>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
+
+        {import.meta.env.PROD && !import.meta.env.VITE_API_URL && (
+          <div style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: '#fecaca', fontWeight: 700, marginBottom: 6 }}>VITE_API_URL is not set</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6 }}>
+              The browser cannot reach your Render API. In Vercel → Project → Settings → Environment Variables, add <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code> = your backend URL (example: <code style={{ color: '#e5e7eb' }}>https://your-service.onrender.com</code>), then redeploy. Rebuilds bake this value into the site.
+            </p>
+          </div>
+        )}
 
         {/* ── CONTROLS ── */}
         <div style={{ background: '#0d0d1a', border: '1px solid #1f2937', borderRadius: 20, padding: '24px 28px', marginBottom: 24 }}>
@@ -182,12 +191,12 @@ export default function Dashboard() {
               <ol style={{ margin: 0, paddingLeft: 18, color: '#9ca3af', fontSize: 13, lineHeight: 1.85 }}>
                 <li><strong style={{ color: '#e5e7eb' }}>Predict</strong> — loads live prices (yfinance), builds 17 features, runs LightGBM, runs SHAP.</li>
                 <li><strong style={{ color: '#e5e7eb' }}>Signal card</strong> — BUY / SELL / HOLD with calibrated probabilities.</li>
-                <li><strong style={{ color: '#e5e7eb' }}>SHAP chart</strong> — bar graph (like the example →) shows which features drove this prediction.</li>
+                <li><strong style={{ color: '#e5e7eb' }}>SHAP chart</strong> — horizontal bars show which features drove this prediction (after Predict succeeds).</li>
                 <li><strong style={{ color: '#e5e7eb' }}>Stats row</strong> — RSI, AI regime, volatility, MACD, class probs at a glance.</li>
                 <li>Optional: GPT commentary + news/reddit/analyst cards if API keys are set on the backend.</li>
               </ol>
             </div>
-            <SampleShapPreview />
+            <MarketHistoryPanel ticker={ticker} />
           </div>
         )}
 
@@ -277,7 +286,7 @@ export default function Dashboard() {
             <p style={{ fontSize: 36, marginBottom: 12 }}>▶</p>
             <p style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>Click Predict above</p>
             <p style={{ color: '#4b5563', fontSize: 14, maxWidth: 460, margin: '0 auto', lineHeight: 1.65 }}>
-              The example SHAP chart and checklist above stay visible until a live run succeeds — then they are replaced by your real signal, probability bars, and SHAP for that ticker.
+              The 4-year price panel and checklist stay visible until Predict succeeds — then you see the full ML output (signal, probabilities, SHAP) for that ticker.
             </p>
           </div>
         )}
