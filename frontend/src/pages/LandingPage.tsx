@@ -121,7 +121,7 @@ export default function LandingPage() {
             Open Live Dashboard →
           </button>
           <a
-            href="https://github.com/paudelAnkit"
+            href="https://github.com/AankitPaudel/market-regime-detection"
             target="_blank"
             rel="noopener noreferrer"
             style={{ padding: '14px 32px', borderRadius: 12, background: 'transparent', border: '1px solid #374151', color: '#9ca3af', fontWeight: 600, fontSize: 15, textDecoration: 'none' }}
@@ -272,7 +272,10 @@ export default function LandingPage() {
             { icon: '⚡', title: 'AI Intensity Index', color: '#a855f7', desc: 'The custom regime score (0–100%). Above its own rolling mean = high AI regime. In high AI regimes, the model historically performs better because algorithmic patterns are more consistent.', badge: 'Original feature' },
             { icon: '🔍', title: 'SHAP Feature Chart', color: '#f59e0b', desc: 'A horizontal bar chart showing which features drove THIS prediction. Green bars pushed toward the signal, red bars pushed against it. Not a global average — computed fresh for each prediction.', badge: 'TreeExplainer' },
             { icon: '📅', title: 'Horizon Toggle', color: '#14b8a6', desc: '1-day, 3-day, and 5-day prediction windows. Each is a completely separate trained model. Longer horizons are generally smoother but less reactive to intraday news.', badge: '3 separate models' },
-            { icon: '💬', title: 'GPT-4o Commentary', color: '#ec4899', desc: 'If an OpenAI API key is configured, GPT-4o writes a 2-sentence plain-English analysis of the prediction, citing the regime and top SHAP feature. Optional — dashboard works fully without it.', badge: 'Optional AI layer' },
+            { icon: '💬', title: 'GPT-4o Commentary', color: '#ec4899', desc: 'If an OpenAI API key is configured, GPT-4o writes a 2-sentence plain-English analysis of the prediction, citing the regime and top SHAP feature. Optional — dashboard works fully without it.', badge: 'Optional · OPENAI_API_KEY' },
+            { icon: '📰', title: 'News Sentiment', color: '#f97316', desc: 'Fetches the last 10 headlines for the ticker from NewsAPI and scores sentiment using keyword analysis. Shows a sentiment bar from -1 (bearish) to +1 (bullish). Off by default.', badge: 'Optional · NEWSAPI_KEY' },
+            { icon: '📣', title: 'Reddit Mentions', color: '#ef4444', desc: 'Searches r/wallstreetbets and r/investing for 24-hour mention volume and crowd sentiment for the selected ticker. Off by default.', badge: 'Optional · REDDIT_CLIENT_ID' },
+            { icon: '📈', title: 'Analyst Data', color: '#14b8a6', desc: 'Pulls Wall Street analyst consensus rating (Buy/Hold/Sell), 12-month price target, and next earnings date from Alpha Vantage. Off by default.', badge: 'Optional · ALPHA_VANTAGE_KEY' },
           ].map(({ icon, title, color, desc, badge }) => (
             <div key={title} style={{ background: '#0d0d1a', border: '1px solid #1f2937', borderRadius: 18, padding: 24 }}>
               <div style={{ display: 'flex', align: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 8 }}>
@@ -283,6 +286,79 @@ export default function LandingPage() {
               <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.7 }}>{desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── OPTIONAL API FEATURES ── */}
+      <section style={{ padding: '100px 24px', background: '#080812' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <p style={{ color: '#6366f1', fontWeight: 700, fontSize: 12, letterSpacing: '0.12em', marginBottom: 12, textAlign: 'center' }}>OPTIONAL ENRICHMENTS</p>
+          <h2 style={{ fontSize: 'clamp(24px, 3vw, 40px)', fontWeight: 800, textAlign: 'center', marginBottom: 8 }}>
+            Four bonus features — all off by default
+          </h2>
+          <p style={{ color: '#6b7280', textAlign: 'center', marginBottom: 56, fontSize: 15, maxWidth: 620, margin: '0 auto 56px' }}>
+            The core prediction requires zero API keys and always works.
+            These features activate individually when you add their key to <code style={{ background: '#0d0d1a', padding: '2px 8px', borderRadius: 6, color: '#9ca3af', fontSize: 13 }}>backend/.env</code>.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 14 }}>
+            {[
+              {
+                icon: '💬', title: 'GPT-4o Commentary', color: '#ec4899',
+                key: 'OPENAI_API_KEY', link: 'https://platform.openai.com/api-keys',
+                desc: 'GPT-4o reads the prediction output, regime score, and top SHAP feature, then writes a 2-sentence plain-English analyst summary. Great for understanding why the model made its call.',
+              },
+              {
+                icon: '📰', title: 'News Sentiment', color: '#f97316',
+                key: 'NEWSAPI_KEY', link: 'https://newsapi.org/register',
+                desc: 'Fetches the 10 most recent headlines for the selected company from NewsAPI and scores them positive/negative. Displayed as a live sentiment bar on the dashboard.',
+              },
+              {
+                icon: '📣', title: 'Reddit Mentions', color: '#ef4444',
+                key: 'REDDIT_CLIENT_ID + REDDIT_CLIENT_SECRET', link: 'https://www.reddit.com/prefs/apps',
+                desc: 'Tracks 24-hour mention volume across r/wallstreetbets and r/investing using Reddit\'s PRAW API. Shows mention count, sentiment score, and top post title.',
+              },
+              {
+                icon: '📈', title: 'Analyst Data', color: '#14b8a6',
+                key: 'ALPHA_VANTAGE_KEY', link: 'https://www.alphavantage.co/support/#api-key',
+                desc: 'Pulls analyst buy/hold/sell consensus, 12-month price target, and next earnings date from Alpha Vantage\'s free tier. All 3 pieces shown in a clean card on the dashboard.',
+              },
+            ].map(({ icon, title, color, key, link, desc }) => (
+              <div key={title} style={{ background: '#0d0d1a', border: '1px solid #1f2937', borderRadius: 18, padding: 26 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 24 }}>{icon}</span>
+                    <h3 style={{ fontWeight: 800, fontSize: 16, margin: 0 }}>{title}</h3>
+                  </div>
+                  <span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 999, background: `${color}10`, color, border: `1px solid ${color}30`, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    Optional
+                  </span>
+                </div>
+                <p style={{ color: '#6b7280', fontSize: 13, lineHeight: 1.75, marginBottom: 16 }}>{desc}</p>
+                <div style={{ background: '#070710', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <code style={{ fontSize: 11, color: '#4b5563', letterSpacing: '0.03em' }}>{key}</code>
+                  <a href={link} target="_blank" rel="noopener noreferrer"
+                    style={{ fontSize: 11, color: color, textDecoration: 'none', fontWeight: 600, opacity: 0.8 }}>
+                    Get free key →
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 32, background: '#070710', border: '1px solid #1f2937', borderRadius: 14, padding: '20px 24px', display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+            <span style={{ fontSize: 20, flexShrink: 0 }}>🔑</span>
+            <div>
+              <p style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>How to enable any optional feature</p>
+              <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.75 }}>
+                Copy <code style={{ color: '#9ca3af', background: '#0d0d1a', padding: '2px 6px', borderRadius: 4 }}>backend/.env.example</code> to{' '}
+                <code style={{ color: '#9ca3af', background: '#0d0d1a', padding: '2px 6px', borderRadius: 4 }}>backend/.env</code>.
+                Add whichever keys you have — leave the rest blank.
+                Restart the backend. Each feature activates independently.
+                If you're using Render, add keys in the <strong style={{ color: '#9ca3af' }}>Environment</strong> tab of your service settings.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -331,7 +407,7 @@ export default function LandingPage() {
         </p>
         <p style={{ fontSize: 12, color: '#374151' }}>
           Built by{' '}
-          <a href="https://github.com/paudelAnkit" target="_blank" rel="noopener noreferrer" style={{ color: '#4b5563', textDecoration: 'none' }}>
+          <a href="https://github.com/AankitPaudel/market-regime-detection" target="_blank" rel="noopener noreferrer" style={{ color: '#4b5563', textDecoration: 'none' }}>
             Ankit Paudel
           </a>
           {' '}· University of Idaho · CS 4771 Machine Learning

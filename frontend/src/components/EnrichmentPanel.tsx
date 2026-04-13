@@ -66,20 +66,90 @@ function RatingBadge({ rating }: { rating: string }) {
   )
 }
 
+const OPTIONAL_FEATURES = [
+  {
+    icon: '📰',
+    title: 'News Sentiment',
+    desc: 'Fetches last 10 headlines and scores market sentiment using NLP keyword analysis.',
+    key: 'NEWSAPI_KEY',
+    link: 'https://newsapi.org/register',
+    linkLabel: 'Get free key →',
+  },
+  {
+    icon: '📣',
+    title: 'Reddit Mentions',
+    desc: 'Tracks r/wallstreetbets and r/investing for 24-hour mention volume and crowd sentiment.',
+    key: 'REDDIT_CLIENT_ID',
+    link: 'https://www.reddit.com/prefs/apps',
+    linkLabel: 'Create app →',
+  },
+  {
+    icon: '📈',
+    title: 'Analyst Data',
+    desc: 'Pulls analyst consensus rating, price target, and next earnings date from Alpha Vantage.',
+    key: 'ALPHA_VANTAGE_KEY',
+    link: 'https://www.alphavantage.co/support/#api-key',
+    linkLabel: 'Get free key →',
+  },
+]
+
 export default function EnrichmentPanel({ enrichments }: Props) {
   const { news, reddit, alpha_vantage } = enrichments
   const hasAny = news !== null || reddit !== null || alpha_vantage !== null
 
-  if (!hasAny) return null
+  // When no keys are configured, show a teaser so users know these features exist
+  if (!hasAny) {
+    return (
+      <div style={{ marginTop: 24, background: '#080812', border: '1px dashed #1f2937', borderRadius: 20, padding: '24px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+          <p style={{ fontSize: 11, color: '#374151', fontWeight: 700, letterSpacing: '0.1em' }}>
+            OPTIONAL ENRICHMENTS
+          </p>
+          <span style={{ fontSize: 10, color: '#374151', padding: '2px 8px', border: '1px solid #1f2937', borderRadius: 999 }}>
+            Off by default — zero keys required for core predictions
+          </span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginBottom: 20 }}>
+          {OPTIONAL_FEATURES.map(({ icon, title, desc, key, link, linkLabel }) => (
+            <div key={title} style={{ background: '#0a0a18', border: '1px solid #1a1a2e', borderRadius: 14, padding: 18, opacity: 0.7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <span style={{ fontSize: 18, filter: 'grayscale(0.7)' }}>{icon}</span>
+                <p style={{ fontWeight: 700, fontSize: 13, color: '#6b7280' }}>{title}</p>
+              </div>
+              <p style={{ fontSize: 12, color: '#374151', lineHeight: 1.6, marginBottom: 10 }}>{desc}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <code style={{ fontSize: 10, color: '#1f2937', background: '#050510', padding: '3px 8px', borderRadius: 6 }}>
+                  {key}
+                </code>
+                <a href={link} target="_blank" rel="noopener noreferrer"
+                  style={{ fontSize: 11, color: '#3b82f6', textDecoration: 'none', opacity: 0.6 }}>
+                  {linkLabel}
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ background: '#070710', borderRadius: 10, padding: '12px 16px', borderLeft: '3px solid #1f2937' }}>
+          <p style={{ fontSize: 12, color: '#374151', lineHeight: 1.7 }}>
+            To enable: copy <code style={{ color: '#4b5563', background: '#0d0d1a', padding: '1px 6px', borderRadius: 4 }}>backend/.env.example</code> to{' '}
+            <code style={{ color: '#4b5563', background: '#0d0d1a', padding: '1px 6px', borderRadius: 4 }}>backend/.env</code>,
+            add your API keys, and restart the backend. Each feature activates independently — you can enable just the ones you have.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div>
+    <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <p style={{ fontSize: 11, color: '#374151', fontWeight: 700, letterSpacing: '0.1em' }}>
           OPTIONAL ENRICHMENTS
         </p>
-        <span style={{ fontSize: 10, color: '#1f2937', padding: '2px 8px', border: '1px solid #1f2937', borderRadius: 999 }}>
-          Configure API keys in .env to enable these panels
+        <span style={{ fontSize: 10, color: '#22c55e', padding: '2px 8px', border: '1px solid #22c55e40', background: 'rgba(34,197,94,0.06)', borderRadius: 999 }}>
+          Active
         </span>
       </div>
 
