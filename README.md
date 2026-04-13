@@ -1,143 +1,250 @@
-# AI-Dominated Market Regime Detection V2
+# AI-Dominated Market Regime Detection
 
-> Predicting equity direction for AAPL, GOOGL, MSFT, TSLA, NVDA using
-> LightGBM + meta-labeling gate + AI Intensity Index
+**A live ML web application that predicts equity direction by first detecting whether algorithmic traders are dominating the market.**
 
-🔗 **Live Demo:** *(deploy to Vercel — update URL here)*
-📄 **Course:** CS 4771 Machine Learning — University of Idaho
-👤 **Author:** Ankit Paudel
-
----
-
-## What It Does
-
-- Fetches real-time OHLCV data via **yfinance** on every request (no stale cache)
-- Computes **17 technical features** + a rolling-rank **AI Intensity Index**
-- Runs **pre-trained LightGBM** models — instant response for all recruiters
-- Outputs **BUY / SELL / HOLD** with full confidence probability breakdown
-- Visualizes **SHAP feature importance** per prediction
-- Supports **1 / 3 / 5 day** prediction horizons (3 separate models per ticker)
-- Optional **GPT-4o** plain-English commentary on each signal
-- Hidden **retrain endpoint** for technical recruiters to trigger live retraining
+> 👤 Ankit Paudel · CS 4771 Machine Learning · University of Idaho  
+> 🔗 Live Demo: *(deploy to Vercel — update URL here)*  
+> ⚠️ Research project — not financial advice
 
 ---
 
-## Architecture
+## What This Project Does
+
+Most ML-based trading systems treat the market as a single regime. This project starts with a different observation: **over 70% of US equity volume is now driven by algorithmic and high-frequency trading.** When algorithms dominate, price patterns are different — momentum amplifies faster, reversions are quicker, and volatility structure changes.
+
+This system:
+1. **Detects the current AI intensity regime** using a custom composite signal built from rolling percentile ranks of volatility, volume, MACD, and Bollinger Band width
+2. **Uses that regime signal as an additional feature** in a LightGBM classifier
+3. **Outputs BUY / SELL / HOLD** with a full probability breakdown over 1, 3, or 5 day horizons
+4. **Explains every prediction** using SHAP (SHapley Additive exPlanations)
+5. **Runs on live data** — yfinance fetches the last 120 days of OHLCV on every request
+
+---
+
+## Live Demo Walkthrough
 
 ```
-yfinance (live OHLCV) → Feature Engineering (17 indicators + AI Index)
-                              ↓
-                   Pre-trained LightGBM (.pkl)
-                              ↓
-                    FastAPI REST Backend
-                              ↓
-               React + TypeScript Dashboard ← Vercel
+1. Open the dashboard
+2. Select a ticker: AAPL · GOOGL · MSFT · TSLA · NVDA
+3. Choose a horizon: 1-day · 3-day · 5-day
+4. Click Predict
+5. In ~3-5 seconds you see:
+   - BUY / SELL / HOLD signal with confidence %
+   - Full probability distribution (all 3 classes)
+   - AI Intensity Index and regime status
+   - SHAP chart showing exactly which features drove this prediction
+   - RSI, 10-day volatility, MACD diff, volume z-score
+   - (Optional) GPT-4o plain-English commentary
 ```
 
-**Hybrid approach:**
-- Default path: pre-trained `.pkl` → instant 2-3s response
-- Features: always live from yfinance → always feels real-time
-- Advanced: retrain button at dashboard bottom → live model update
+---
+
+## ML Architecture
+
+### The Problem With Standard Approaches
+
+Standard stock prediction models treat all market days as equivalent. This ignores the structural shift caused by algorithmic trading domination — where pattern types, mean-reversion speed, and momentum characteristics all change.
+
+### The Approach
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         INPUT                                   │
+│  yfinance: 120 days of OHLCV for AAPL / GOOGL / MSFT / TSLA / NVDA │
+└────────────────────┬────────────────────────────────────────────┘
+                     ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  FEATURE ENGINEERING (17 features)              │
+│  Returns:        return_1d, return_5d                           │
+│  Volatility:     volatility_10d, volatility_20d                 │
+│  Momentum:       RSI(14), MACD, MACD signal, MACD diff          │
+│  Mean-reversion: BB upper, BB lower, BB width, BB %             │
+│  Volume:         Volume z-score (deviation from 20d mean)       │
+│  Price action:   Opening gap, daily range                       │
+│  AI regime:      AI Intensity Index, AI regime flag ← original  │
+└────────────────────┬────────────────────────────────────────────┘
+                     ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                    LIGHTGBM CLASSIFIER                          │
+│  15 separate models: 5 tickers × 3 horizons                     │
+│  Training: 3 years of data, TimeSeriesSplit cross-validation    │
+│  Output: softmax over {SELL=0, HOLD=1, BUY=2}                   │
+│  Class weighting: balanced (handles HOLD dominance)             │
+└────────────────────┬────────────────────────────────────────────┘
+                     ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                  SHAP EXPLAINABILITY                            │
+│  TreeExplainer on each prediction                               │
+│  Returns: top 8 features with signed SHAP values                │
+│  Positive = supports the predicted class                        │
+│  Negative = works against the predicted class                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why LightGBM?
+
+| Property | Why It Matters Here |
+|----------|---------------------|
+| Gradient boosting | Builds an ensemble of weak learners; excellent on tabular financial data |
+| Handles class imbalance | `class_weight='balanced'` prevents model from always predicting HOLD |
+| Fast inference | Pre-trained .pkl loads in milliseconds at server startup |
+| SHAP compatible | TreeExplainer works natively with LightGBM trees |
+| TimeSeriesSplit CV | Respects temporal order — no look-ahead bias in evaluation |
+
+### The AI Intensity Index (Original Contribution)
+
+```python
+ai_feats = ['volatility_10d', 'volume_zscore', 'bb_width', 'macd_diff']
+df['ai_index'] = df[ai_feats].rank(pct=True).mean(axis=1)
+df['ai_regime'] = (df['ai_index'] > df['ai_index'].rolling(20).mean()).astype(int)
+```
+
+This composite signal uses rolling percentile ranking across 4 indicators that are known to spike during algorithmic trading episodes:
+- **High volatility** → algorithms amplifying moves
+- **Volume z-score spike** → institutional order flow
+- **Wide Bollinger Bands** → regime uncertainty or breakout
+- **MACD divergence** → momentum shift that algos often front-run
+
+The regime flag is binary: 1 when the index exceeds its own 20-day rolling mean.
+
+### Label Creation (Meta-Labeling Inspired)
+
+```python
+fwd_return = df['close'].pct_change(horizon).shift(-horizon)
+labels[fwd_return > +0.02] = 2  # BUY
+labels[fwd_return < -0.02] = 0  # SELL
+labels[otherwise]          = 1  # HOLD
+```
+
+The ±2% threshold filters out noise and creates a meaningful three-class problem. Inspired by Marcos López de Prado's *Advances in Financial Machine Learning* meta-labeling framework.
 
 ---
 
-## Tech Stack
+## Technical Features Explained
 
-| Layer | Tools |
-|-------|-------|
-| ML Models | LightGBM (15 models: 5 tickers × 3 horizons) |
-| Interpretability | SHAP |
-| Features | ta, pandas, numpy (17 indicators + AI index) |
-| Backend | FastAPI, Python |
-| Frontend | React, TypeScript, Tailwind, Recharts |
-| Live Data | yfinance (free, no API key needed) |
-| AI Commentary | OpenAI GPT-4o (optional) |
-| Deploy | Vercel (frontend) + Render (backend) |
-
----
-
-## ML Skills Demonstrated
-
-| Skill | How |
-|-------|-----|
-| ML Engineering | LightGBM, XGBoost, scikit-learn, TimeSeriesSplit CV |
-| Feature Engineering | 17 technical indicators + PCA-based AI Intensity Index |
-| MLOps | Pre-trained models, versioned .pkl files, retrain endpoint |
-| Interpretability | SHAP values visualized per prediction |
-| Backend Engineering | FastAPI, REST API, async background tasks |
-| Frontend Engineering | React + TypeScript + Tailwind + Recharts |
-| Deployment | Vercel + Render, free tier |
-| System Design | Hybrid pre-train + live data architecture |
-| AI Integration | GPT-4o optional commentary |
-| Data Engineering | yfinance pipeline, feature computation, label creation |
+| Feature | What It Measures | Trading Signal |
+|---------|-----------------|----------------|
+| `rsi` | Relative Strength Index (14-period) | <30 = oversold, >70 = overbought |
+| `macd_diff` | MACD histogram | Positive = upward momentum |
+| `bb_width` | Bollinger Band width normalized by price | High = volatile squeeze incoming |
+| `volume_zscore` | Volume deviation from 20-day mean | High = institutional activity |
+| `ai_index` | Composite algorithmic intensity | High = algo-dominated regime |
+| `volatility_10d` | 10-day rolling std of returns | High = uncertain market |
+| `gap` | Overnight gap (open vs prior close) | Positive = bullish gap |
+| `range` | Intraday range / close | High = high intraday volatility |
 
 ---
 
-## Folder Structure
+## Project Structure
 
 ```
 AI Market Regime Detection V2/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                    # FastAPI entry point
+│   │   ├── main.py                    # FastAPI entry point, CORS, startup model loading
 │   │   ├── pipeline/
-│   │   │   ├── data_fetch.py          # yfinance live OHLCV fetch
-│   │   │   ├── features.py            # 17 technical indicators + AI index
-│   │   │   ├── labels.py              # BUY/SELL/HOLD label logic
-│   │   │   ├── train.py               # LightGBM training (retrain endpoint)
-│   │   │   ├── predict.py             # Load .pkl models, run inference
-│   │   │   ├── shap_explain.py        # SHAP value computation
+│   │   │   ├── data_fetch.py          # yfinance OHLCV fetch (120 days, live)
+│   │   │   ├── features.py            # All 17 technical features + AI Intensity Index
+│   │   │   ├── predict.py             # Load .pkl models, LightGBM inference
+│   │   │   ├── shap_explain.py        # SHAP TreeExplainer, handles new 3D format
+│   │   │   ├── train.py               # Retrain logic (used by retrain endpoint only)
 │   │   │   └── commentary.py          # GPT-4o optional commentary
 │   │   └── routers/
-│   │       ├── predict.py             # GET /api/predict/{ticker}
-│   │       └── retrain.py             # POST /api/retrain/{ticker}
-│   ├── models/                        # Pre-trained .pkl files (committed to git)
-│   │   ├── lgbm_AAPL_1d.pkl
-│   │   └── ... (5 tickers × 3 horizons = 15 models)
-│   ├── requirements.txt
-│   └── .env.example
+│   │       ├── predict.py             # GET /api/predict/{ticker}?horizon={1|3|5}
+│   │       └── retrain.py             # POST /api/retrain/{ticker}?horizon={1|3|5}
+│   ├── models/                        # 30 pre-trained .pkl files (committed to git)
+│   │   ├── lgbm_AAPL_1d.pkl           # ~3MB each
+│   │   ├── features_AAPL_1d.pkl       # Feature column list
+│   │   └── ... (5 tickers × 3 horizons × 2 files = 30 files)
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── LandingPage.tsx
-│   │   │   └── Dashboard.tsx
+│   │   │   ├── LandingPage.tsx        # Storytelling landing: pipeline, features, ML methods
+│   │   │   └── Dashboard.tsx          # Live prediction dashboard
 │   │   ├── components/
-│   │   │   ├── HorizonToggle.tsx
-│   │   │   ├── PredictionCard.tsx
-│   │   │   ├── ShapChart.tsx
-│   │   │   ├── Commentary.tsx
-│   │   │   └── RetrainButton.tsx
+│   │   │   ├── PredictionCard.tsx     # Signal + probability bars + signal explanation
+│   │   │   ├── ShapChart.tsx          # SHAP horizontal bar chart with tooltips
+│   │   │   ├── HorizonToggle.tsx      # 1/3/5 day selector
+│   │   │   ├── Commentary.tsx         # GPT-4o commentary display
+│   │   │   └── RetrainButton.tsx      # Live retrain trigger with polling
 │   │   ├── lib/
-│   │   │   └── api.ts
+│   │   │   └── api.ts                 # Axios API client + TypeScript types
 │   │   └── App.tsx
 │   └── package.json
-├── train_local.py                     # Run this first to generate all .pkl files
+├── notebooks/                         # V1 research notebooks (EDA → models → evaluation)
+├── results/                           # V1 model performance figures and backtest results
+├── train_local.py                     # Run this to regenerate all 30 .pkl files
 └── README.md
 ```
 
 ---
 
-## Getting Started
+## API Endpoints
 
-### Step 1 — Train Models Locally (REQUIRED before deploy)
+### `GET /api/predict/{ticker}?horizon={1|3|5}`
 
-```bash
-pip install yfinance lightgbm scikit-learn ta pandas numpy joblib
-python train_local.py
-git add backend/models/
-git commit -m "Add pre-trained LightGBM models (5 tickers x 3 horizons)"
+Returns a full prediction for the given ticker and horizon.
+
+**Response:**
+```json
+{
+  "ticker": "AAPL",
+  "horizon": 1,
+  "prediction": {
+    "label": "HOLD",
+    "confidence": 0.9999,
+    "probabilities": { "SELL": 0.00001, "HOLD": 0.9999, "BUY": 0.00007 }
+  },
+  "features": {
+    "rsi": 54.32,
+    "ai_index": 0.6241,
+    "ai_regime": 1,
+    "volatility_10d": 0.014,
+    "macd_diff": -0.423
+  },
+  "shap_values": [
+    { "feature": "macd_diff", "shap_value": -1.149 },
+    { "feature": "rsi", "shap_value": 0.234 },
+    ...
+  ],
+  "commentary": "...",
+  "has_commentary": false
+}
 ```
 
-### Step 2 — Run Backend Locally
+### `POST /api/retrain/{ticker}?horizon={1|3|5}`
+
+Triggers background retraining on latest 365 days of yfinance data. Returns immediately, model updates in ~60s.
+
+### `GET /api/retrain/status/{ticker}_{horizon}d`
+
+Poll retraining progress. Returns `"running"` → `"done"` or `"error: ..."`.
+
+### `GET /api/health`
+
+Returns list of all loaded model keys.
+
+---
+
+## Running Locally
+
+### Prerequisites
+- Python environment with: `fastapi uvicorn yfinance pandas numpy scikit-learn lightgbm shap joblib openai python-dotenv ta`
+- Node.js 18+
+
+### Backend
 
 ```bash
 cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-# Test: curl "http://localhost:8000/api/predict/AAPL?horizon=1"
+uvicorn app.main:app --reload --port 8000
+# OR with conda:
+# conda run -n ml-env uvicorn app.main:app --reload
 ```
 
-### Step 3 — Run Frontend Locally
+Visit `http://localhost:8000/api/health` to verify all 15 models loaded.
+
+### Frontend
 
 ```bash
 cd frontend
@@ -146,26 +253,41 @@ npm run dev
 # Open http://localhost:5173
 ```
 
+### Retrain models (optional)
+
+```bash
+python train_local.py
+# Trains all 15 models on 3 years of data (~5 minutes)
+# Saves 30 .pkl files to backend/models/
+```
+
 ---
 
 ## Deployment
 
-### Backend → Render (free)
+| Service | Platform | Config |
+|---------|----------|--------|
+| Backend | Render (free) | Root: `backend/` · Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Frontend | Vercel (free) | Root: `frontend/` · Env: `VITE_API_URL=<render-url>` |
 
-1. Push to GitHub
-2. render.com → New Web Service → connect repo
-3. Root directory: `backend/`
-4. Build: `pip install -r requirements.txt`
-5. Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-6. Env vars: `OPENAI_API_KEY` (optional)
-
-### Frontend → Vercel (free)
-
-1. vercel.com → New Project → import repo
-2. Root directory: `frontend/`
-3. Env var: `VITE_API_URL` = your Render URL
-4. Deploy → update CORS in `backend/app/main.py`
+After deploying backend, update `allow_origins` in `backend/app/main.py` with the Vercel URL.
 
 ---
 
-> ⚠️ Research project for CS 4771 Machine Learning — University of Idaho. Not financial advice.
+## Skills Demonstrated
+
+| Area | Evidence |
+|------|---------|
+| **ML Engineering** | LightGBM multi-class classifier, TimeSeriesSplit CV, class balancing, pre-trained model serving |
+| **Feature Engineering** | 17 hand-crafted technical indicators, original AI Intensity Index using rolling percentile ranks |
+| **MLOps** | Pre-trained .pkl serving, background retrain endpoint, in-memory model hot-swap |
+| **Explainability** | SHAP TreeExplainer per-prediction, handles SHAP v0.45 3D array format |
+| **Backend Engineering** | FastAPI, async background tasks, CORS, REST API design |
+| **Frontend Engineering** | React 18, TypeScript, Tailwind CSS, Recharts, routing |
+| **System Design** | Hybrid pre-train + live-data architecture, cold-start tolerant |
+| **Data Engineering** | yfinance pipeline, rolling feature computation, forward-return label creation |
+| **AI Integration** | GPT-4o optional commentary with structured prompt engineering |
+
+---
+
+> ⚠️ This is a research project for CS 4771 Machine Learning — University of Idaho. Predictions are for educational demonstration only and should not be used to make financial decisions.

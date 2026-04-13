@@ -2,11 +2,7 @@ import { useState } from 'react'
 import { triggerRetrain, getRetrainStatus } from '../lib/api'
 import toast from 'react-hot-toast'
 
-interface Props {
-  ticker: string
-  horizon: number
-}
-
+interface Props { ticker: string; horizon: number }
 type Status = 'idle' | 'running' | 'done' | 'error'
 
 export default function RetrainButton({ ticker, horizon }: Props) {
@@ -23,11 +19,11 @@ export default function RetrainButton({ ticker, horizon }: Props) {
         if (res.status === 'done') {
           clearInterval(poll)
           setStatus('done')
-          toast.success(`Model retrained for ${ticker} ${horizon}d!`)
+          toast.success(`Model retrained for ${ticker} ${horizon}d on latest data!`)
         } else if (typeof res.status === 'string' && res.status.startsWith('error')) {
           clearInterval(poll)
           setStatus('error')
-          toast.error('Retrain failed')
+          toast.error('Retrain failed — check backend logs')
         }
       }, 5000)
     } catch {
@@ -36,21 +32,20 @@ export default function RetrainButton({ ticker, horizon }: Props) {
     }
   }
 
-  const labels: Record<Status, string> = {
-    idle:    `⚙️ Retrain ${ticker} ${horizon}d model on live data`,
-    running: '⏳ Retraining... (~60s)',
-    done:    '✅ Retrained successfully',
-    error:   '❌ Retrain failed — try again',
-  }
-
   return (
     <button
       onClick={handleRetrain}
       disabled={status === 'running'}
-      className="px-4 py-2 text-xs bg-gray-800 hover:bg-gray-700 disabled:opacity-40
-                 text-gray-400 rounded-lg border border-gray-700 transition-all"
+      style={{
+        padding: '8px 16px', borderRadius: 8, cursor: status === 'running' ? 'not-allowed' : 'pointer',
+        border: '1px solid #1f2937', background: '#070710', color: '#4b5563',
+        fontSize: 12, fontWeight: 600, opacity: status === 'running' ? 0.5 : 1,
+      }}
     >
-      {labels[status]}
+      {status === 'idle'    && `⚙️ Retrain lgbm_${ticker}_${horizon}d on latest 365d data`}
+      {status === 'running' && '⏳ Retraining in background...'}
+      {status === 'done'    && '✅ Retrained — next prediction uses updated model'}
+      {status === 'error'   && '❌ Retrain failed — try again'}
     </button>
   )
 }
