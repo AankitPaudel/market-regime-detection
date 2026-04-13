@@ -126,10 +126,10 @@ export default function LandingPage() {
         padding: '0 32px', height: 56,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e80' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/favicon.png" alt="logo" style={{ width: 26, height: 26, borderRadius: 7, objectFit: 'cover' }} />
           <span style={{ fontWeight: 700, fontSize: 14, color: '#f1f5f9' }}>Market Regime</span>
-          <span style={{ fontSize: 12, color: '#475569', marginLeft: 4 }}>by Ankit Paudel</span>
+          <span style={{ fontSize: 12, color: '#475569', marginLeft: 2 }}>by Ankit Paudel</span>
         </div>
 
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

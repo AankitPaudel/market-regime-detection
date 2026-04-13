@@ -66,6 +66,7 @@ export default function Dashboard() {
             ← Back
           </a>
           <div style={{ width: 1, height: 20, background: '#1f2937' }} />
+          <img src="/favicon.png" alt="logo" style={{ width: 28, height: 28, borderRadius: 8, objectFit: 'cover' }} />
           <div>
             <p style={{ fontWeight: 800, fontSize: 15, margin: 0 }}>Market Regime Dashboard</p>
             <p style={{ fontSize: 11, color: '#4b5563', margin: 0 }}>AI Market Regime Detection V2 · Ankit Paudel</p>
