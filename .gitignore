@@ -40,6 +40,8 @@ data/processed/
 *.parquet
 *.pkl
 *.pickle
+# Allow pre-trained models to be committed (required for deployment)
+!backend/models/*.pkl
 
 # Models
 results/models/*.pkl
