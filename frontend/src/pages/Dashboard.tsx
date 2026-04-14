@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { fetchPrediction, fetchDashboardPreview } from '../lib/api'
 import type { Prediction, DashboardPreview } from '../lib/api'
-import { getOfflineDashboardPreview } from '../data/offlineDashboardPreview'
+import { getOfflineDashboardPreview, hasCachedYahooMarket } from '../data/offlineDashboardPreview'
 import HorizonToggle from '../components/HorizonToggle'
 import PredictionCard from '../components/PredictionCard'
 import ShapChart from '../components/ShapChart'
@@ -241,17 +241,13 @@ export default function Dashboard() {
           )}
           <p style={{ fontSize: 11, color: '#374151', marginTop: 10, maxWidth: 720, lineHeight: 1.6 }}>
             <strong style={{ color: '#6b7280' }}>Dashboard load:</strong> chart and model cards load from <code style={{ color: '#4b5563' }}>/api/dashboard-preview</code> when the backend is configured (~4y Yahoo history, same feature pipeline, LightGBM + SHAP on the latest bar).{' '}
-            Without <code style={{ color: '#4b5563' }}>VITE_API_URL</code>, the page shows a <strong style={{ color: '#6b7280' }}>bundled sample</strong> so the layout is never empty.{' '}
+            Without <code style={{ color: '#4b5563' }}>VITE_API_URL</code>, the page still loads: the chart uses a <strong style={{ color: '#6b7280' }}>saved Yahoo export</strong> (real history in the repo for AAPL / GOOGL / MSFT / TSLA / NVDA) and sample model cards so the layout is never empty.{' '}
             <strong style={{ color: '#6b7280' }}>Predict</strong> runs a fresh live pull and optional enrichments. Free Render can sleep — first Predict after idle may take <strong style={{ color: '#6b7280' }}>30–90s</strong> (we auto-retry once).
           </p>
         </div>
 
         {previewLoading && !skipLivePreviewFetch && (
-          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 10 }}>Syncing live dashboard data…</p>
-        )}
-
-        {previewLoading && !skipLivePreviewFetch && (
-          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12 }}>Loading live dashboard data…</p>
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12 }}>Syncing live dashboard data…</p>
         )}
 
         {/* ── 4Y MARKET + model strip (live, merged, or bundled sample) ── */}
@@ -269,11 +265,17 @@ export default function Dashboard() {
                       The <strong style={{ color: '#e5e7eb' }}>price chart</strong> above is live from Yahoo. The <strong style={{ color: '#e5e7eb' }}>signal, SHAP, and tiles</strong> use bundled sample values until the server can run your trained models.
                     </>
                   )
-                : (
-                    <>
-                      Chart and model cards are bundled in the frontend so the dashboard always renders (for example on Vercel without <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code>). Set <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code> to your Render URL and redeploy to replace this with live Yahoo + your models.
-                    </>
-                  )}
+                : hasCachedYahooMarket(ticker)
+                  ? (
+                      <>
+                        The <strong style={{ color: '#e5e7eb' }}>price chart and summary stats</strong> come from a <strong style={{ color: '#e5e7eb' }}>static Yahoo Finance export</strong> checked into the repo (real closes, ~4y window). <strong style={{ color: '#e5e7eb' }}>Signal, SHAP, and tiles</strong> stay sample until the API runs your models. Re-export: <code style={{ color: '#e5e7eb' }}>python scripts/export_dashboard_cache.py</code>
+                      </>
+                    )
+                  : (
+                      <>
+                        Chart and model cards are bundled so the dashboard always renders. Set <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code> to your Render URL and redeploy for live Yahoo + models.
+                      </>
+                    )}
             </p>
             {showLiveFetchNote && (
               <p style={{ fontSize: 11, color: '#78716c', marginTop: 10, lineHeight: 1.55 }}>

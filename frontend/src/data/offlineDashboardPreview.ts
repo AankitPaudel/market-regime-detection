@@ -1,9 +1,27 @@
 /**
- * Bundled sample dashboard (~4y-shaped chart + ML-shaped cards) so the UI
- * renders on static hosts when the API is missing, cold, or slow.
- * Replaced automatically when /api/dashboard-preview succeeds.
+ * Offline dashboard: uses bundled Yahoo-derived JSON (real ~4y stats + last 280
+ * closes) when present; synthetic chart only as fallback for unknown tickers.
+ * ML cards stay illustrative until the live API runs your models.
  */
-import type { DashboardPreview, Prediction } from '../lib/api'
+import type { DashboardPreview, Prediction, MarketSnapshot } from '../lib/api'
+
+import cacheAAPL from './cache/AAPL.json'
+import cacheGOOGL from './cache/GOOGL.json'
+import cacheMSFT from './cache/MSFT.json'
+import cacheTSLA from './cache/TSLA.json'
+import cacheNVDA from './cache/NVDA.json'
+
+const CACHED_MARKET: Record<string, MarketSnapshot> = {
+  AAPL: cacheAAPL as MarketSnapshot,
+  GOOGL: cacheGOOGL as MarketSnapshot,
+  MSFT: cacheMSFT as MarketSnapshot,
+  TSLA: cacheTSLA as MarketSnapshot,
+  NVDA: cacheNVDA as MarketSnapshot,
+}
+
+export function hasCachedYahooMarket(ticker: string): boolean {
+  return !!CACHED_MARKET[ticker.toUpperCase()]
+}
 
 function mulberry32(a: number) {
   return () => {
@@ -87,10 +105,8 @@ function shapFor(ticker: string, h: number) {
   }))
 }
 
-export function getOfflineDashboardPreview(ticker: string, horizon: number): DashboardPreview {
-  const t = ticker.toUpperCase()
+function syntheticMarket(t: string, h: number): MarketSnapshot {
   const last = TICKER_LAST[t] ?? TICKER_LAST.AAPL
-  const h = horizon === 3 || horizon === 5 ? horizon : 1
   const seed = t.split('').reduce((a, c) => a + c.charCodeAt(0), 0) + h * 31
   const closes = synthCloses(seed, last)
   const firstClose = closes[0]?.c ?? last * 0.62
@@ -98,6 +114,29 @@ export function getOfflineDashboardPreview(ticker: string, horizon: number): Das
   const vol = dailyRet.length
     ? Math.round(Math.sqrt(dailyRet.reduce((a, x) => a + x * x, 0) / dailyRet.length) * Math.sqrt(252) * 10000) / 100
     : 28
+  return {
+    ticker: t,
+    source: 'Bundled synthetic chart (no cache file for this ticker)',
+    period_requested: '4y',
+    history_start: '2022-04-14',
+    history_end: '2026-04-13',
+    trading_days: 1001,
+    last_close: last,
+    first_close: Math.round(firstClose * 100) / 100,
+    total_return_pct: Math.round(((last / firstClose - 1) * 100) * 100) / 100,
+    annualized_volatility_pct: vol,
+    closes,
+  }
+}
+
+export function getOfflineDashboardPreview(ticker: string, horizon: number): DashboardPreview {
+  const t = ticker.toUpperCase()
+  const h = horizon === 3 || horizon === 5 ? horizon : 1
+  const seed = t.split('').reduce((a, c) => a + c.charCodeAt(0), 0) + h * 31
+  const cached = CACHED_MARKET[t]
+  const market: MarketSnapshot = cached ?? syntheticMarket(t, h)
+  const usesRealYahooCache = !!cached
+
   const pred = horizonProbs(h)
   const rsi = Math.round((48 + (seed % 17) + h) * 100) / 100
   const ml: Prediction & { preview_mode?: boolean; preview_note?: string; demo_data?: boolean } = {
@@ -112,28 +151,21 @@ export function getOfflineDashboardPreview(ticker: string, horizon: number): Das
       macd_diff: Math.round((1.1 + (seed % 20) / 50 + h * 0.05) * 10000) / 10000,
     },
     shap_values: shapFor(t, h),
-    commentary:
-      'Bundled sample narrative for layout. Connect the live API for Yahoo prices, model output, and optional enrichments.',
+    commentary: usesRealYahooCache
+      ? 'Bundled sample narrative for the model row. The price chart and summary stats above are a static Yahoo Finance export stored in the repo (not today’s live print).'
+      : 'Bundled sample narrative for layout. Connect the live API for live Yahoo prices and model output.',
     has_commentary: true,
     enrichments: { news: null, reddit: null, alpha_vantage: null },
     preview_mode: true,
-    preview_note:
-      'Illustrative values only. When the backend is available, this panel is replaced by the same pipeline on live ~4y data.',
+    preview_note: usesRealYahooCache
+      ? 'Signal / SHAP / tiles are illustrative. The ~4y chart and headline numbers are from a saved Yahoo export; refresh with scripts/export_dashboard_cache.py when you want newer dates.'
+      : 'Illustrative values only. When the backend is available, this panel is replaced by the same pipeline on live ~4y data.',
     demo_data: true,
   }
 
   return {
+    ...market,
     ticker: t,
-    source: 'Bundled sample (offline)',
-    period_requested: '4y',
-    history_start: '2022-04-14',
-    history_end: '2026-04-13',
-    trading_days: 1001,
-    last_close: last,
-    first_close: Math.round(firstClose * 100) / 100,
-    total_return_pct: Math.round(((last / firstClose - 1) * 100) * 100) / 100,
-    annualized_volatility_pct: vol,
-    closes,
     horizon_requested: h,
     ml_preview: ml,
     ml_preview_error: null,
