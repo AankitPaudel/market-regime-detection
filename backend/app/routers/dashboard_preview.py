@@ -82,8 +82,8 @@ def dashboard_preview(ticker: str, horizon: int = Query(1, description='Must be 
                 },
                 'shap_values': shap_values,
                 'commentary': (
-                    f'Preview: latest bar from ~4y Yahoo history. Strongest SHAP driver: {top_feature}. '
-                    'Click Predict for a fresh live pull (optional news / Reddit / analyst cards if configured).'
+                    f'Latest bar from ~4y Yahoo history. Strongest SHAP driver: {top_feature}. '
+                    'Use Predict for a fresh live pull (optional news / Reddit / analyst cards if configured).'
                 ),
                 'has_commentary': True,
                 'enrichments': {'news': None, 'reddit': None, 'alpha_vantage': None},

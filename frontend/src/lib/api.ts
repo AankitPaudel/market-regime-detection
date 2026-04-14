@@ -6,6 +6,8 @@ const api = axios.create({
 })
 
 export interface Prediction {
+  /** True when values are bundled in the frontend (no API). */
+  demo_data?: boolean
   ticker: string
   horizon: number
   prediction: {

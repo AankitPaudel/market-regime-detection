@@ -1,5 +1,5 @@
 """
-Used ONLY by the /api/retrain endpoint (advanced recruiter feature).
+Used ONLY by the /api/retrain endpoint (optional advanced feature).
 Retrains a single ticker+horizon model live using yfinance data.
 """
 import joblib

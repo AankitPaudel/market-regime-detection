@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { fetchPrediction, fetchDashboardPreview } from '../lib/api'
 import type { Prediction, DashboardPreview } from '../lib/api'
+import { getOfflineDashboardPreview } from '../data/offlineDashboardPreview'
 import HorizonToggle from '../components/HorizonToggle'
 import PredictionCard from '../components/PredictionCard'
 import ShapChart from '../components/ShapChart'
@@ -35,7 +36,32 @@ export default function Dashboard() {
   const [previewLoading, setPreviewLoading] = useState(true)
   const [previewErr, setPreviewErr] = useState<string | null>(null)
 
+  const skipLivePreviewFetch = import.meta.env.PROD && !import.meta.env.VITE_API_URL
+
+  const offlinePreview = useMemo(
+    () => getOfflineDashboardPreview(ticker, horizon),
+    [ticker, horizon],
+  )
+
+  const resolvedPreview = useMemo((): DashboardPreview => {
+    if (preview && !previewErr) {
+      if (preview.ml_preview) return preview
+      return {
+        ...preview,
+        ml_preview: offlinePreview.ml_preview,
+        ml_preview_error: preview.ml_preview_error,
+      }
+    }
+    return offlinePreview
+  }, [preview, previewErr, offlinePreview])
+
   useEffect(() => {
+    if (skipLivePreviewFetch) {
+      setPreviewLoading(false)
+      setPreviewErr(null)
+      setPreview(null)
+      return
+    }
     const ac = new AbortController()
     setPreviewLoading(true)
     setPreviewErr(null)
@@ -53,10 +79,12 @@ export default function Dashboard() {
         if (!ac.signal.aborted) setPreviewLoading(false)
       })
     return () => ac.abort()
-  }, [ticker, horizon])
+  }, [ticker, horizon, skipLivePreviewFetch])
 
-  const displayPrediction = prediction ?? (!loading ? preview?.ml_preview ?? null : null)
-  const isPreview = !prediction && !!preview?.ml_preview && !!displayPrediction
+  const displayPrediction = prediction ?? (!loading ? resolvedPreview.ml_preview ?? null : null)
+  const isLiveHistorySnapshot =
+    !prediction && !!preview?.ml_preview && !!displayPrediction && !displayPrediction.demo_data
+  const isDemoLayout = !!displayPrediction?.demo_data
 
   const handlePredict = async (t = ticker, h = horizon) => {
     abortRef.current?.abort()
@@ -126,10 +154,12 @@ export default function Dashboard() {
     ? '#ef4444' : '#eab308'
 
   const marketState = {
-    data: preview && !previewErr ? preview : null,
-    loading: previewLoading,
-    error: previewErr,
+    data: resolvedPreview,
+    loading: false,
+    error: null,
   }
+
+  const showLiveFetchNote = previewErr && !skipLivePreviewFetch
 
   return (
     <div style={{ minHeight: '100vh', background: '#05050f', color: '#e5e7eb' }}>
@@ -210,26 +240,59 @@ export default function Dashboard() {
             </p>
           )}
           <p style={{ fontSize: 11, color: '#374151', marginTop: 10, maxWidth: 720, lineHeight: 1.6 }}>
-            <strong style={{ color: '#6b7280' }}>Recruiter preview:</strong> the chart and model cards below load from one <code style={{ color: '#4b5563' }}>/api/dashboard-preview</code> call (~4y Yahoo history + the same feature pipeline and LightGBM + SHAP on the latest bar).{' '}
+            <strong style={{ color: '#6b7280' }}>Dashboard load:</strong> chart and model cards load from <code style={{ color: '#4b5563' }}>/api/dashboard-preview</code> when the backend is configured (~4y Yahoo history, same feature pipeline, LightGBM + SHAP on the latest bar).{' '}
+            Without <code style={{ color: '#4b5563' }}>VITE_API_URL</code>, the page shows a <strong style={{ color: '#6b7280' }}>bundled sample</strong> so the layout is never empty.{' '}
             <strong style={{ color: '#6b7280' }}>Predict</strong> runs a fresh live pull and optional enrichments. Free Render can sleep — first Predict after idle may take <strong style={{ color: '#6b7280' }}>30–90s</strong> (we auto-retry once).
           </p>
         </div>
 
-        {/* ── 4Y MARKET + always visible when API works ── */}
+        {previewLoading && !skipLivePreviewFetch && (
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 10 }}>Syncing live dashboard data…</p>
+        )}
+
+        {previewLoading && !skipLivePreviewFetch && (
+          <p style={{ fontSize: 11, color: '#4b5563', marginBottom: 12 }}>Loading live dashboard data…</p>
+        )}
+
+        {/* ── 4Y MARKET + model strip (live, merged, or bundled sample) ── */}
         <div style={{ marginBottom: 24 }}>
           <MarketHistoryPanel ticker={ticker} market={marketState} />
         </div>
 
-        {preview?.ml_preview_error && !prediction && (
+        {isDemoLayout && !prediction && (
           <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
-            <p style={{ fontSize: 13, color: '#fcd34d', fontWeight: 700, marginBottom: 6 }}>Model preview unavailable</p>
-            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6 }}>{preview.ml_preview_error}</p>
+            <p style={{ fontSize: 13, color: '#fcd34d', fontWeight: 700, marginBottom: 6 }}>Sample data (offline)</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.65 }}>
+              {preview && !previewErr
+                ? (
+                    <>
+                      The <strong style={{ color: '#e5e7eb' }}>price chart</strong> above is live from Yahoo. The <strong style={{ color: '#e5e7eb' }}>signal, SHAP, and tiles</strong> use bundled sample values until the server can run your trained models.
+                    </>
+                  )
+                : (
+                    <>
+                      Chart and model cards are bundled in the frontend so the dashboard always renders (for example on Vercel without <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code>). Set <code style={{ color: '#e5e7eb' }}>VITE_API_URL</code> to your Render URL and redeploy to replace this with live Yahoo + your models.
+                    </>
+                  )}
+            </p>
+            {showLiveFetchNote && (
+              <p style={{ fontSize: 11, color: '#78716c', marginTop: 10, lineHeight: 1.55 }}>
+                Live <code style={{ color: '#a8a29e' }}>/api/dashboard-preview</code> could not be reached ({previewErr}) — showing bundled sample instead.
+              </p>
+            )}
           </div>
         )}
 
-        {preview?.ml_preview?.preview_note && isPreview && (
+        {preview?.ml_preview_error && !prediction && preview && !isDemoLayout && (
+          <div style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
+            <p style={{ fontSize: 13, color: '#fcd34d', fontWeight: 700, marginBottom: 6 }}>Live model output unavailable</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.6 }}>{preview.ml_preview_error} Signal card uses bundled sample until models are deployed.</p>
+          </div>
+        )}
+
+        {preview?.ml_preview?.preview_note && isLiveHistorySnapshot && (
           <div style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: 14, padding: '14px 18px', marginBottom: 20 }}>
-            <p style={{ fontSize: 13, color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>Dashboard preview (not a second data pull)</p>
+            <p style={{ fontSize: 13, color: '#93c5fd', fontWeight: 700, marginBottom: 6 }}>About this view</p>
             <p style={{ fontSize: 12, color: '#9ca3af', lineHeight: 1.65 }}>{preview.ml_preview.preview_note}</p>
           </div>
         )}
@@ -267,7 +330,12 @@ export default function Dashboard() {
                 <div>
                   <p style={{ fontWeight: 700, fontSize: 16 }}>
                     {TICKER_NAMES[displayPrediction.ticker]} · {displayPrediction.horizon}-day signal
-                    {isPreview && <span style={{ marginLeft: 8, fontSize: 11, color: '#60a5fa', fontWeight: 600 }}>(preview)</span>}
+                    {isLiveHistorySnapshot && (
+                      <span style={{ marginLeft: 8, fontSize: 11, color: '#60a5fa', fontWeight: 600 }}>(historical snapshot)</span>
+                    )}
+                    {isDemoLayout && !prediction && (
+                      <span style={{ marginLeft: 8, fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>(sample)</span>
+                    )}
                   </p>
                   <p style={{ fontSize: 13, color: '#6b7280' }}>
                     {(displayPrediction.prediction.confidence * 100).toFixed(1)}% model confidence ·{' '}
@@ -304,7 +372,10 @@ export default function Dashboard() {
             </div>
 
             {displayPrediction.has_commentary && (
-              <Commentary text={displayPrediction.commentary} />
+              <Commentary
+                text={displayPrediction.commentary}
+                variant={displayPrediction.demo_data ? 'note' : 'gpt'}
+              />
             )}
 
             <EnrichmentPanel enrichments={displayPrediction.enrichments} />
@@ -316,7 +387,7 @@ export default function Dashboard() {
             <div style={{ background: '#080812', border: '1px solid #1f2937', borderRadius: 16, padding: '22px 24px' }}>
               <p style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>HOW THIS DASHBOARD WORKS</p>
               <ol style={{ margin: 0, paddingLeft: 18, color: '#9ca3af', fontSize: 13, lineHeight: 1.85 }}>
-                <li><strong style={{ color: '#e5e7eb' }}>Preview</strong> — ~4y chart + model cards load automatically from the backend (same features as Predict when models are deployed).</li>
+                <li><strong style={{ color: '#e5e7eb' }}>Background load</strong> — ~4y chart + model cards from the backend when configured, otherwise a bundled sample keeps the page populated.</li>
                 <li><strong style={{ color: '#e5e7eb' }}>Predict</strong> — fresh yfinance pull, optional news / Reddit / analyst cards if keys are set.</li>
                 <li><strong style={{ color: '#e5e7eb' }}>Signal + SHAP</strong> — BUY / SELL / HOLD, probabilities, and feature attribution.</li>
               </ol>
@@ -338,7 +409,7 @@ export default function Dashboard() {
         <div style={{ marginTop: 48, paddingTop: 24, borderTop: '1px solid #111122' }}>
           <p style={{ fontSize: 12, color: '#374151', fontWeight: 600, marginBottom: 6 }}>⚙️ Advanced — Live Retraining</p>
           <p style={{ fontSize: 11, color: '#1f2937', marginBottom: 12 }}>
-            Triggers a full retrain of the selected model on the latest 365 days of yfinance data (~60s). For technical recruiters.
+            Triggers a full retrain of the selected model on the latest 365 days of yfinance data (~60s).
           </p>
           <RetrainButton ticker={ticker} horizon={horizon} />
         </div>

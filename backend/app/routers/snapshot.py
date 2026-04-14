@@ -13,7 +13,7 @@ TICKERS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA']
 def market_snapshot(ticker: str):
     """
     ~4 years of daily closes from Yahoo Finance (yfinance).
-    Used by the frontend preview so recruiters see real data before running Predict.
+    Used by the frontend for a fast market summary before running Predict.
     """
     ticker = ticker.upper()
     if ticker not in TICKERS:

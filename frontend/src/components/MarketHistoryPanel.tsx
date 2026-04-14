@@ -51,7 +51,7 @@ export default function MarketHistoryPanel({ ticker, market }: Props) {
           MARKET HISTORY (~4 YEARS)
         </p>
         <p style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.55 }}>
-          Daily closes from <strong style={{ color: '#e5e7eb' }}>Yahoo Finance</strong> (same source as training). Updates when you change ticker or horizon. This loads with the dashboard preview so recruiters see real history before running Predict.
+          Daily closes: <strong style={{ color: '#e5e7eb' }}>live Yahoo Finance</strong> when the API is connected, otherwise a <strong style={{ color: '#e5e7eb' }}>bundled sample series</strong> for the same chart layout. Updates when you change ticker or horizon.
         </p>
       </div>
 
